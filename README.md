@@ -227,7 +227,7 @@ Models use the Anthropic-compatible API format. MiniMax M2.5 and Kimi K2.5 both 
 ## Tests
 
 ```bash
-uv run pytest -q
+uv run pytest tests/ -q
 ```
 
 ## Safety
