@@ -358,7 +358,7 @@ Runtime behavior:
 ## Tests
 
 ```bash
-uv run pytest -q
+uv run pytest tests/ -q
 ```
 
 Discord test coverage:
