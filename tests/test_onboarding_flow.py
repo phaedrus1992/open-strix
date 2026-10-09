@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
+import threading
 from pathlib import Path
 
 import yaml
+
+NO_TOKEN_WEB_UI = "No Discord token configured. Local web UI available at"
 
 
 def _run(cmd: list[str], cwd: Path, env: dict[str, str], stdin: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -19,6 +23,51 @@ def _run(cmd: list[str], cwd: Path, env: dict[str, str], stdin: str | None = Non
     )
 
 
+def _run_until(cmd: list[str], cwd: Path, env: dict[str, str], marker: str, timeout: float = 120.0) -> str:
+    """Run a long-lived command until it prints marker, then stop it.
+
+    With no Discord token, open-strix serves the web UI until it is killed,
+    so the test cannot wait for it to exit.
+    """
+    proc = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        start_new_session=True,
+    )
+    lines: list[str] = []
+    done = threading.Event()
+
+    def _read() -> None:
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            lines.append(line)
+            if marker in line:
+                done.set()
+        done.set()
+
+    reader = threading.Thread(target=_read, daemon=True)
+    reader.start()
+    done.wait(timeout)
+    # Signal the whole group: `uv run` starts open-strix as a child process.
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+        proc.wait(timeout=10)
+    except ProcessLookupError:
+        pass
+    except subprocess.TimeoutExpired:
+        os.killpg(proc.pid, signal.SIGKILL)
+        proc.wait()
+    reader.join(timeout=5)
+    output = "".join(lines)
+    assert marker in output, f"{marker!r} not printed within {timeout}s. Output:\n{output}"
+    return output
+
+
 def test_onboarding_flow_bootstraps_expected_home_repo(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     home = tmp_path / "new-agent"
@@ -30,9 +79,7 @@ def test_onboarding_flow_bootstraps_expected_home_repo(tmp_path: Path) -> None:
 
     _run(["uv", "init", "--python", "3.11", "--no-readme"], cwd=home, env=env)
     _run(["uv", "add", "--editable", str(repo_root)], cwd=home, env=env)
-    first_run = _run(["uv", "run", "open-strix"], cwd=home, env=env, stdin="")
-
-    assert "No Discord token configured. Running in stdin mode." in first_run.stdout
+    _run_until(["uv", "run", "open-strix"], cwd=home, env=env, marker=NO_TOKEN_WEB_UI)
 
     expected_paths = [
         home / "state" / ".gitkeep",
@@ -90,5 +137,4 @@ def test_onboarding_flow_bootstraps_expected_home_repo(tmp_path: Path) -> None:
     assert "onboarding" in init_block["text"].lower()
 
     # Second run should be idempotent and still work.
-    second_run = _run(["uv", "run", "open-strix"], cwd=home, env=env, stdin="")
-    assert "No Discord token configured. Running in stdin mode." in second_run.stdout
+    _run_until(["uv", "run", "open-strix"], cwd=home, env=env, marker=NO_TOKEN_WEB_UI)
