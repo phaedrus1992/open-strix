@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -216,6 +217,8 @@ class AppConfig:
     discord_messages_in_prompt: int = 10
     discord_token_env: str = "DISCORD_TOKEN"
     always_respond_bot_ids: set[str] = field(default_factory=set)
+    discord_channel_allowlist: frozenset[str] = field(default_factory=frozenset)
+    discord_dm_allowlist: frozenset[str] = field(default_factory=frozenset)
     session_log_retention_days: int = 30
     api_port: int = 0
     web_ui_port: int = 0
@@ -255,6 +258,32 @@ def _normalize_id_list(value: Any) -> set[str]:
         }
         return normalized
     return set()
+
+
+# Discord IDs are 64-bit snowflakes. The regex checks the shape, and the code checks the range.
+_SNOWFLAKE_RE = re.compile(r"[0-9]{17,20}")
+_SNOWFLAKE_MAX = 2**64 - 1
+
+
+def _parse_snowflake_list(key: str, value: Any) -> frozenset[str]:
+    if value is None:
+        return frozenset()
+    if not isinstance(value, list):
+        raise ValueError(
+            f"config.yaml: {key} must be a list of Discord IDs, got {type(value).__name__}. "
+            "Write it as a YAML list.",
+        )
+    ids: set[str] = set()
+    for item in value:
+        is_scalar_id = isinstance(item, (int, str)) and not isinstance(item, bool)
+        text = str(item).strip() if is_scalar_id else ""
+        if not _SNOWFLAKE_RE.fullmatch(text) or int(text) > _SNOWFLAKE_MAX:
+            raise ValueError(
+                f"config.yaml: {key} entry {item!r} is not a Discord ID (17-20 ASCII digits). "
+                "Copy the ID from Discord with developer mode on.",
+            )
+        ids.add(text)
+    return frozenset(ids)
 
 
 def _parse_folders(raw: Any) -> dict[str, str]:
@@ -298,6 +327,15 @@ def load_config(layout: RepoLayout) -> AppConfig:
     model = str(model_raw).strip() if model_raw is not None else ""
     if not model:
         model = DEFAULT_MODEL
+    channel_allowlist = _parse_snowflake_list(
+        "discord_channel_allowlist", loaded.get("discord_channel_allowlist"),
+    )
+    dm_allowlist = _parse_snowflake_list("discord_dm_allowlist", loaded.get("discord_dm_allowlist"))
+    if dm_allowlist and not channel_allowlist:
+        raise ValueError(
+            "config.yaml: discord_dm_allowlist has no effect without discord_channel_allowlist. "
+            "Set discord_channel_allowlist, or remove discord_dm_allowlist.",
+        )
     return AppConfig(
         model=model,
         model_max_retries=max(0, int(loaded.get("model_max_retries", DEFAULT_MODEL_MAX_RETRIES))),
@@ -318,6 +356,8 @@ def load_config(layout: RepoLayout) -> AppConfig:
         discord_messages_in_prompt=int(loaded.get("discord_messages_in_prompt", 10)),
         discord_token_env=str(loaded.get("discord_token_env", "DISCORD_TOKEN")),
         always_respond_bot_ids=_normalize_id_list(loaded.get("always_respond_bot_ids")),
+        discord_channel_allowlist=channel_allowlist,
+        discord_dm_allowlist=dm_allowlist,
         session_log_retention_days=int(loaded.get("session_log_retention_days", 30)),
         api_port=int(loaded.get("api_port", 0)),
         web_ui_port=int(loaded.get("web_ui_port", 0)),

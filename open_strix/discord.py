@@ -292,6 +292,22 @@ class DiscordMixin:
         return sent, sent_message_id, sent_chunks
 
     async def handle_discord_message(self, message: discord.Message) -> None:
+        channel_id = str(message.channel.id)
+        raw_parent_id = getattr(message.channel, "parent_id", None)
+        parent_id = str(raw_parent_id) if raw_parent_id is not None else None
+        is_dm = _channel_conversation_type(message.channel) == "dm"
+        gate_author_id = str(getattr(message.author, "id", "")).strip() or None
+        if not self.is_discord_channel_allowed(
+            channel_id=channel_id, parent_id=parent_id, is_dm=is_dm, author_id=gate_author_id,
+        ):
+            self.log_event(
+                "discord_message_ignored",
+                channel_id=channel_id,
+                parent_id=parent_id,
+                author_id=gate_author_id,
+                is_dm=is_dm,
+            )
+            return
         await self._refresh_channel_history_from_discord(
             channel_id=str(message.channel.id),
             before_message_id=str(message.id),
