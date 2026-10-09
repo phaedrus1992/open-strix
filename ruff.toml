@@ -1,0 +1,13 @@
+# Strict lint applies to fork-owned code only. Upstream files keep upstream style (FORK.md).
+include = ["open_strix/robo/**/*.py", "tests/robo/**/*.py"]
+line-length = 100
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "PL", "C90"]
+
+[lint.mccabe]
+max-complexity = 8
+
+[lint.pylint]
+max-args = 5
