@@ -19,7 +19,8 @@ Design: RoboPhaedrus1992/agent `docs/superpowers/specs/2026-10-09-fork-harness-s
 ## Upstream sync
 
 - The `sync-upstream` workflow runs every Monday.
-- If upstream has new commits, it merges `upstream/main` into a `sync/upstream-YYYYMMDD` branch and opens a PR.
+- If upstream has new commits, it merges `upstream/main` into a `sync/upstream-YYYYMMDD` branch, runs CI on it, and opens an "Upstream sync ready" issue with a link to open the PR.
+- The workflow does not open the PR itself. That needs the setting "Allow GitHub Actions to create and approve pull requests", which would let a write-access account approve its own PR. Keep that setting off.
 - If the merge conflicts, it opens an issue that lists the conflicting files. Resolve the conflict in a branch by hand, with a merge commit.
 - Never rebase `main` and never force-push.
 

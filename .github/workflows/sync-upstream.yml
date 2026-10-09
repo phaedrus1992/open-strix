@@ -1,0 +1,37 @@
+name: sync-upstream
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: read
+      issues: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Merge upstream and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh auth setup-git
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/tkellogg/open-strix.git
+          git fetch --quiet upstream main
+          branch="sync/upstream-$(date -u +%Y%m%d)"
+          result="$RUNNER_TEMP/sync-result"
+          status=0
+          .github/scripts/sync-upstream.sh upstream/main "$branch" >"$result" || status=$?
+          if [[ "$status" -ne 0 && "$status" -ne 3 ]]; then exit "$status"; fi
+          .github/scripts/publish-sync.sh "$result" "$branch"
