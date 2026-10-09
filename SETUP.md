@@ -276,6 +276,8 @@ folders:
 | `discord_messages_in_prompt` | Recent Discord messages in each prompt |
 | `discord_token_env` | Env var name for Discord token |
 | `always_respond_bot_ids` | Bot author IDs the agent responds to |
+| `discord_channel_allowlist` | Discord channel IDs the agent reads. Empty (the default) means every channel the bot can see. A thread follows its parent channel |
+| `discord_dm_allowlist` | Author IDs whose DMs the agent reads when `discord_channel_allowlist` is set. Needs `discord_channel_allowlist` |
 | `api_port` | Loopback REST API port (`0` disables it) |
 | `web_ui_port` | Local web chat port (default `8084`; `0` disables it) |
 | `web_ui_host` | Bind host for the web UI (default `127.0.0.1`) |

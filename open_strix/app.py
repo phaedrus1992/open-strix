@@ -632,6 +632,22 @@ class OpenStrixApp(DiscordMixin, SchedulerMixin, ToolsMixin, WebChatMixin):
             return True
         return self.should_respond_to_bot(author_id)
 
+    def is_discord_channel_allowed(
+        self,
+        *,
+        channel_id: str,
+        parent_id: str | None,
+        is_dm: bool,
+        author_id: str | None,
+    ) -> bool:
+        allowlist = self.config.discord_channel_allowlist
+        if not allowlist:
+            return True
+        if is_dm:
+            return author_id is not None and author_id in self.config.discord_dm_allowlist
+        # A thread has its own channel ID; it inherits the decision of its parent channel.
+        return channel_id in allowlist or (parent_id is not None and parent_id in allowlist)
+
     def _iter_block_files(self) -> list[Path]:
         files = list(self.layout.blocks_dir.glob("*.yaml"))
         files.extend(self.layout.blocks_dir.glob("*.yml"))

@@ -1,0 +1,5 @@
+# Upstream files keep upstream style (FORK.md), so ruff skips them. force-exclude makes
+# ruff skip them also when an editor or a hook passes one by path. Fork-owned code has
+# its own ruff.toml in open_strix/robo/ and tests/robo/.
+force-exclude = true
+extend-exclude = ["open_strix", "tests", "optional-skills", "scripts"]
