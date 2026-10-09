@@ -1,0 +1,2 @@
+# Strict lint for fork-owned code (FORK.md).
+extend = "../../ruff-robo.toml"
