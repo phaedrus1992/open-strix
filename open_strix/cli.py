@@ -52,14 +52,58 @@ def _write_if_missing(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def _run_command(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        cmd,
-        cwd=cwd,
-        text=True,
-        capture_output=True,
-        check=False,
+# A pre-push hook can run for minutes. Bound it so setup cannot hang on a credential prompt.
+GIT_PUSH_TIMEOUT_SECONDS = 300
+
+
+def _run_command(
+    cmd: list[str], cwd: Path, timeout: float | None = None
+) -> subprocess.CompletedProcess[str]:
+    """Run a command. With a timeout, a hang returns a failed result instead of blocking setup."""
+    try:
+        return subprocess.run(
+            cmd,
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=124,
+            stdout="",
+            stderr=f"timed out after {timeout}s",
+        )
+
+
+def _push_initial_history(home: Path) -> subprocess.CompletedProcess[str]:
+    """Push the first commit. A remote with its own history is merged in before the retry.
+
+    The merge uses --allow-unrelated-histories because the local repo and the existing
+    remote share no commits. A failed merge is aborted, and a failed abort is reported too.
+    """
+    push_cmd = ["git", "push", "-u", "origin", "HEAD"]
+    push_proc = _run_command(push_cmd, cwd=home, timeout=GIT_PUSH_TIMEOUT_SECONDS)
+    if push_proc.returncode == 0 or "rejected" not in push_proc.stderr:
+        return push_proc
+    fetch_proc = _run_command(
+        ["git", "fetch", "origin"], cwd=home, timeout=GIT_PUSH_TIMEOUT_SECONDS
     )
+    if fetch_proc.returncode != 0:
+        return fetch_proc
+    merge_cmd = ["git", "merge", "--allow-unrelated-histories", "--no-edit", "origin/main"]
+    merge_proc = _run_command(merge_cmd, cwd=home, timeout=GIT_PUSH_TIMEOUT_SECONDS)
+    if merge_proc.returncode != 0:
+        abort_proc = _run_command(
+            ["git", "merge", "--abort"], cwd=home, timeout=GIT_PUSH_TIMEOUT_SECONDS
+        )
+        detail = merge_proc.stdout.strip() or merge_proc.stderr.strip()
+        if abort_proc.returncode != 0:
+            detail += f"; merge --abort also failed: {abort_proc.stderr.strip()}"
+        return subprocess.CompletedProcess(merge_cmd, merge_proc.returncode, "", detail)
+    return _run_command(push_cmd, cwd=home, timeout=GIT_PUSH_TIMEOUT_SECONDS)
 
 
 def _platform_key() -> str:
@@ -560,7 +604,7 @@ def _ensure_github_remote(home: Path, repo_name: str | None = None) -> None:
                 flush=True,
             )
             if _ensure_initial_commit(home):
-                push_proc = _run_command(["git", "push", "-u", "origin", "HEAD"], cwd=home)
+                push_proc = _push_initial_history(home)
                 if push_proc.returncode != 0:
                     print(
                         f"Existing GitHub repo linked, but initial push failed: {push_proc.stderr.strip()}",
@@ -579,7 +623,9 @@ def _ensure_github_remote(home: Path, repo_name: str | None = None) -> None:
         return
 
     if _ensure_initial_commit(home):
-        push_proc = _run_command(["git", "push", "-u", "origin", "HEAD"], cwd=home)
+        push_proc = _run_command(
+            ["git", "push", "-u", "origin", "HEAD"], cwd=home, timeout=GIT_PUSH_TIMEOUT_SECONDS
+        )
         if push_proc.returncode != 0:
             print(f"GitHub remote created, but initial push failed: {push_proc.stderr.strip()}", flush=True)
     else:

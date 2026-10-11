@@ -5,6 +5,16 @@ All notable changes to open-strix are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Fix agent state commits stranding when a PR merges to `main`. The per-turn sync now fetches and merges the upstream before it pushes. A conflicting merge is aborted and reported, and a leftover merge blocks the sync. [fix:sync]
+- Fix climber snapshot and revert passing silently when git fails. Both now print the git error. [fix:climber]
+- Fix dashboard hanging on a stalled git command. Read-only git calls time out after 30 seconds. [fix:dashboard]
+- Fix setup hanging on a stalled `git push`. The first push times out after 300 seconds. [fix:cli]
+- Fix setup failing its first push into an existing GitHub repo with history. Setup merges that history first. [fix:setup]
+
 ## [0.1.43] — 2026-05-10
 
 Headline: a new `patterns` builtin skill collects the recurring failure modes
