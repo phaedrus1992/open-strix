@@ -211,7 +211,9 @@ def test_ensure_github_remote_uses_existing_repo_as_origin_when_create_fails(
     added_origin: dict[str, str] = {}
     push_calls: list[list[str]] = []
 
-    def fake_run_command(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+    def fake_run_command(
+            cmd: list[str], cwd: Path, timeout: float | None = None
+        ) -> subprocess.CompletedProcess[str]:
         assert cwd == home
         if cmd[:4] == ["git", "remote", "get-url", "origin"]:
             return subprocess.CompletedProcess(cmd, 2, "", "no origin")
@@ -252,7 +254,9 @@ def test_ensure_github_remote_uses_existing_repo_without_push_when_commit_missin
     added_origin: dict[str, str] = {}
     push_calls: list[list[str]] = []
 
-    def fake_run_command(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+    def fake_run_command(
+            cmd: list[str], cwd: Path, timeout: float | None = None
+        ) -> subprocess.CompletedProcess[str]:
         assert cwd == home
         if cmd[:4] == ["git", "remote", "get-url", "origin"]:
             return subprocess.CompletedProcess(cmd, 2, "", "no origin")

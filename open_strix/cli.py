@@ -52,14 +52,30 @@ def _write_if_missing(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def _run_command(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        cmd,
-        cwd=cwd,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+# A pre-push hook can run for minutes. Bound it so setup cannot hang on a credential prompt.
+GIT_PUSH_TIMEOUT_SECONDS = 300
+
+
+def _run_command(
+    cmd: list[str], cwd: Path, timeout: float | None = None
+) -> subprocess.CompletedProcess[str]:
+    """Run a command. With a timeout, a hang returns a failed result instead of blocking setup."""
+    try:
+        return subprocess.run(
+            cmd,
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=124,
+            stdout="",
+            stderr=f"timed out after {timeout}s",
+        )
 
 
 def _platform_key() -> str:
@@ -560,7 +576,9 @@ def _ensure_github_remote(home: Path, repo_name: str | None = None) -> None:
                 flush=True,
             )
             if _ensure_initial_commit(home):
-                push_proc = _run_command(["git", "push", "-u", "origin", "HEAD"], cwd=home)
+                push_proc = _run_command(
+                    ["git", "push", "-u", "origin", "HEAD"], cwd=home, timeout=GIT_PUSH_TIMEOUT_SECONDS
+                )
                 if push_proc.returncode != 0:
                     print(
                         f"Existing GitHub repo linked, but initial push failed: {push_proc.stderr.strip()}",
@@ -579,7 +597,9 @@ def _ensure_github_remote(home: Path, repo_name: str | None = None) -> None:
         return
 
     if _ensure_initial_commit(home):
-        push_proc = _run_command(["git", "push", "-u", "origin", "HEAD"], cwd=home)
+        push_proc = _run_command(
+                    ["git", "push", "-u", "origin", "HEAD"], cwd=home, timeout=GIT_PUSH_TIMEOUT_SECONDS
+                )
         if push_proc.returncode != 0:
             print(f"GitHub remote created, but initial push failed: {push_proc.stderr.strip()}", flush=True)
     else:
