@@ -70,7 +70,7 @@ GIT_READ_TIMEOUT_SECONDS = 30
 
 
 def _run_git(repo_root: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
-    """Run a read-only git command. A hang becomes a failed result, so the dashboard still renders."""
+    """Run a read-only git command. A hang returns a failed result, not an exception."""
     try:
         return subprocess.run(
             ["git", *args],
