@@ -293,7 +293,7 @@ def _git_sync(home: Path) -> str:
     if status_proc.returncode != 0:
         return f"git status failed: {status_proc.stderr.strip()}"
     if not status_proc.stdout.strip():
-        return "clean: no changes"
+        return _push_stranded_commits(home)
 
     commit_proc = subprocess.run(
         ["git", "commit", "-m", f"open-strix auto-commit {utc_now_iso()}"],
@@ -305,17 +305,63 @@ def _git_sync(home: Path) -> str:
     if commit_proc.returncode != 0:
         return f"git commit failed: {commit_proc.stderr.strip()}"
 
-    push_proc = subprocess.run(
-        ["git", "push"],
-        cwd=home,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if push_proc.returncode != 0:
-        return f"git push failed: {push_proc.stderr.strip()}"
+    return _integrate_and_push(home, "ok: committed and pushed")
 
-    return "ok: committed and pushed"
+
+GIT_SYNC_FETCH_TIMEOUT_SECONDS = 60
+
+
+def _run_git(home: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """Run git in the agent home. A timeout becomes a failed result, not an exception."""
+    try:
+        return subprocess.run(
+            ["git", *args],
+            cwd=home,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=GIT_SYNC_FETCH_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            args=["git", *args],
+            returncode=124,
+            stdout="",
+            stderr=f"timed out after {GIT_SYNC_FETCH_TIMEOUT_SECONDS}s",
+        )
+
+
+def _push_stranded_commits(home: Path) -> str:
+    """Push local commits left behind by an earlier failed sync. No fetch when none exist."""
+    ahead_proc = _run_git(home, "rev-list", "--count", "@{upstream}..HEAD")
+    if ahead_proc.returncode != 0:
+        return f"git upstream check failed: {ahead_proc.stderr.strip()}"
+    if ahead_proc.stdout.strip() == "0":
+        return "clean: no changes"
+    return _integrate_and_push(home, "ok: pushed")
+
+
+def _integrate_and_push(home: Path, ok_status: str) -> str:
+    """Fetch, merge the upstream, and push. Retry once because the remote can move mid-sync.
+
+    The merge keeps the agent's commits on top of remote commits made by PR merges.
+    A conflict aborts the merge, so the tree stays clean and the failure is greppable.
+    """
+    push_proc = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="")
+    for _attempt in range(2):
+        fetch_proc = _run_git(home, "fetch", "origin")
+        if fetch_proc.returncode != 0:
+            return f"git fetch failed: {fetch_proc.stderr.strip()}"
+
+        merge_proc = _run_git(home, "merge", "--no-edit", "@{upstream}")
+        if merge_proc.returncode != 0:
+            _run_git(home, "merge", "--abort")
+            return f"git merge failed: {merge_proc.stderr.strip() or merge_proc.stdout.strip()}"
+
+        push_proc = _run_git(home, "push")
+        if push_proc.returncode == 0:
+            return ok_status
+    return f"git push failed: {push_proc.stderr.strip()}"
 
 
 def _cleanup_old_sessions(sessions_dir: Path, retention_days: int) -> int:
