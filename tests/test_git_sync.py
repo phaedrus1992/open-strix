@@ -95,5 +95,23 @@ def test_sync_pushes_stranded_local_commit_when_tree_is_clean(tmp_path: Path) ->
     assert _git(bare, "rev-parse", "main") == _git(home, "rev-parse", "HEAD")
 
 
+def test_sync_clean_tree_without_upstream_does_not_fail(tmp_path: Path) -> None:
+    home, _bare = _init_home_with_remote(tmp_path)
+    _git(home, "branch", "--unset-upstream")
+
+    assert _git_sync(home) == "clean: no changes"
+
+
+def test_sync_refuses_to_commit_over_leftover_merge(tmp_path: Path) -> None:
+    home, _bare = _init_home_with_remote(tmp_path)
+    (home / ".git" / "MERGE_HEAD").write_text(_git(home, "rev-parse", "HEAD") + "\n")
+    (home / "state.md").write_text("agent edit\n", encoding="utf-8")
+
+    result = _git_sync(home)
+
+    assert result.startswith("git merge failed: a merge is in progress"), result
+    assert _git(home, "rev-list", "--count", "HEAD") == "1"
+
+
 def test_sync_skips_when_home_is_not_a_repo(tmp_path: Path) -> None:
     assert _git_sync(tmp_path) == "skip: not a git repo"
