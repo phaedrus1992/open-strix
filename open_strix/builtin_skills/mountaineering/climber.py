@@ -289,18 +289,25 @@ def git_snapshot(climb_dir: Path, message: str):
     """Create a git commit of the current workspace state (Law 3)."""
     workspace = climb_dir / "workspace"
     try:
-        subprocess.run(
+        add_proc = subprocess.run(
             ["git", "add", str(workspace)],
             cwd=str(climb_dir),
             capture_output=True,
+            text=True,
             timeout=30,
         )
-        subprocess.run(
+        if add_proc.returncode != 0:
+            print(f"Git snapshot failed at add: {add_proc.stderr.strip()}", file=sys.stderr)
+            return
+        commit_proc = subprocess.run(
             ["git", "commit", "-m", message, "--allow-empty"],
             cwd=str(climb_dir),
             capture_output=True,
+            text=True,
             timeout=30,
         )
+        if commit_proc.returncode != 0:
+            print(f"Git snapshot failed at commit: {commit_proc.stderr.strip()}", file=sys.stderr)
     except Exception as e:
         print(f"Git snapshot failed: {e}", file=sys.stderr)
 
@@ -308,12 +315,15 @@ def git_snapshot(climb_dir: Path, message: str):
 def git_revert_workspace(climb_dir: Path):
     """Revert workspace to the previous commit (Law 3)."""
     try:
-        subprocess.run(
+        revert_proc = subprocess.run(
             ["git", "checkout", "HEAD~1", "--", str(climb_dir / "workspace")],
             cwd=str(climb_dir),
             capture_output=True,
+            text=True,
             timeout=30,
         )
+        if revert_proc.returncode != 0:
+            print(f"Git revert failed: {revert_proc.stderr.strip()}", file=sys.stderr)
     except Exception as e:
         print(f"Git revert failed: {e}", file=sys.stderr)
 
