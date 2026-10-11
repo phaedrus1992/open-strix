@@ -66,14 +66,27 @@ def _load_current_block_sizes(repo_root: Path) -> dict[str, int]:
     return sizes
 
 
+GIT_READ_TIMEOUT_SECONDS = 30
+
+
 def _run_git(repo_root: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", *args],
-        cwd=repo_root,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    """Run a read-only git command. A hang becomes a failed result, so the dashboard still renders."""
+    try:
+        return subprocess.run(
+            ["git", *args],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=GIT_READ_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            args=["git", *args],
+            returncode=124,
+            stdout="",
+            stderr=f"timed out after {GIT_READ_TIMEOUT_SECONDS}s",
+        )
 
 
 def _git_commit_days(repo_root: Path) -> list[tuple[str, date]]:
